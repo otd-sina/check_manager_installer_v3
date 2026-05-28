@@ -21,6 +21,7 @@ from database.db import Database
 from services.ai_service import AIService
 from services.backup_service import BackupService
 from services.check_service import CheckService
+from services.debt_service import DebtService
 from services.expense_service import ExpenseService
 from services.export_service import ExportService
 from services.registration_service import RegistrationService
@@ -57,12 +58,14 @@ class AppContext:
 
         self.db = Database(DB_PATH)
         self.check_service = CheckService(self.db)
+        self.debt_service = DebtService(self.db)
         self.expense_service = ExpenseService(self.db)
         self.registration_service = RegistrationService(self.db)
         self.export_service = ExportService(
             self.check_service,
             self.expense_service,
             self.registration_service,
+            self.debt_service,
         )
         self.ai_service = AIService(
             self.check_service,
@@ -129,6 +132,7 @@ class AppContext:
 
         self.db = Database(DB_PATH)
         self.check_service.db = self.db
+        self.debt_service.db = self.db
         self.expense_service.db = self.db
         self.registration_service.db = self.db
         self.registration_service.customer_service.db = self.db
@@ -141,6 +145,7 @@ class AppContext:
             invalid_db = _RestartRequiredDatabaseProxy(RESTART_REQUIRED_MESSAGE)
             self.db = invalid_db
             self.check_service.db = invalid_db
+            self.debt_service.db = invalid_db
             self.expense_service.db = invalid_db
             self.registration_service.db = invalid_db
             self.registration_service.customer_service.db = invalid_db
