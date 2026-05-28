@@ -1,0 +1,33 @@
+QToolTip {
+    padding: 8px 10px;
+    border: 1px solid #99f6e4;
+    border-radius: 8px;
+    background-color: #134e4a;
+    color: white;
+}
+
+QMenu {
+    padding: 8px;
+    border: 1px solid #dbe3ef;
+    border-radius: 14px;
+    background-color: white;
+}
+
+QMenu::item {
+    padding: 8px 16px;
+    border-radius: 10px;
+}
+
+QMenu::item:selected {
+    background-color: #ccfbf1;
+    color: #115e59;
+}
+
+QStatusBar {
+    background-color: #f8fafc;
+    color: #475569;
+}
+
+QDialog {
+    background-color: #f8fafc;
+}
