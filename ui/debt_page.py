@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFormLayout,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -81,10 +82,10 @@ class AddDebtDialog(QDialog):
         form.addRow(QLabel('نام بدهکار*', self), self.edt_debtor_name)
 
         self.edt_phone = QLineEdit(self)
-        self.edt_phone.setMaxLength(15)
-        self.edt_phone.setValidator(QRegularExpressionValidator(QRegularExpression(r'[\d]*'), self))
+        self.edt_phone.setMaxLength(11)
+        self.edt_phone.setValidator(QRegularExpressionValidator(QRegularExpression(r'^\d{11}$'), self))
         self.edt_phone.setPlaceholderText('مثال: 09123456789')
-        form.addRow(QLabel('شماره تماس', self), self.edt_phone)
+        form.addRow(QLabel('شماره تماس*', self), self.edt_phone)
 
         amount_validator = QRegularExpressionValidator(QRegularExpression(r'[\d,]*'), self)
 
@@ -106,8 +107,16 @@ class AddDebtDialog(QDialog):
         self.lbl_remaining_balance.setObjectName('dashboardHintBadge')
         form.addRow(QLabel('مانده بدهی', self), self.lbl_remaining_balance)
 
+        self.date_purchase = JalaliDatePicker(self)
+        form.addRow(QLabel('تاریخ خرید*', self), self.date_purchase)
+
         self.date_due = JalaliDatePicker(self)
         form.addRow(QLabel('تاریخ سررسید', self), self.date_due)
+
+        self.edt_description = QLineEdit(self)
+        self.edt_description.setMaxLength(500)
+        self.edt_description.setPlaceholderText('توضیحات اختیاری')
+        form.addRow(QLabel('توضیحات', self), self.edt_description)
 
         self.cmb_status = QComboBox(self)
         self.cmb_status.setEnabled(False)
@@ -152,8 +161,11 @@ class AddDebtDialog(QDialog):
         self.edt_phone.setText(debt.phone)
         self.edt_total_amount.setText(f'{int(debt.total_amount or 0):,}')
         self.edt_paid_amount.setText(f'{int(debt.paid_amount or 0):,}')
+        if debt.purchase_date:
+            self.date_purchase.set_jalali_date_text(debt.purchase_date)
         if debt.due_date:
             self.date_due.set_jalali_date_text(debt.due_date)
+        self.edt_description.setText(debt.description or '')
         self._refresh_computed_fields()
 
     def _refresh_computed_fields(self):
@@ -194,8 +206,8 @@ class AddDebtDialog(QDialog):
             errors.append('نام بدهکار الزامی است.')
             set_invalid(self.edt_debtor_name, True)
 
-        if phone and len(phone) < 10:
-            errors.append('شماره تماس معتبر نیست.')
+        if len(phone) != 11:
+            errors.append('تلفن همراه باید دقیقا 11 رقم باشد.')
             set_invalid(self.edt_phone, True)
 
         if total_amount <= 0:
@@ -225,11 +237,13 @@ class AddDebtDialog(QDialog):
             id=self._editing_debt_id,
             debtor_name=self.edt_debtor_name.text().strip(),
             phone=self.edt_phone.text().strip(),
+            purchase_date=self.date_purchase.jalali_text_date(),
+            due_date=self.date_due.jalali_text_date(),
             total_amount=total_amount,
             paid_amount=paid_amount,
             remaining_balance=remaining,
-            due_date=self.date_due.jalali_text_date(),
             status=self.cmb_status.currentData() or 'UNPAID',
+            description=self.edt_description.text().strip(),
         )
 
     def _validation_widgets(self) -> list[QWidget]:
@@ -238,6 +252,7 @@ class AddDebtDialog(QDialog):
             self.edt_phone,
             self.edt_total_amount,
             self.edt_paid_amount,
+            self.edt_description,
         ]
 
 
@@ -246,11 +261,13 @@ class DebtsTableModel(QAbstractTableModel):
         'ID',
         'نام بدهکار',
         'شماره تماس',
+        'تاریخ خرید',
         'مبلغ بدهی',
         'پرداخت شده',
         'مانده بدهی',
         'تاریخ سررسید',
         'وضعیت',
+        'توضیحات',
     ]
 
     def __init__(self, parent: QObject | None = None):
@@ -290,16 +307,16 @@ class DebtsTableModel(QAbstractTableModel):
             return self._display_value(debt, column)
 
         if role == Qt.TextAlignmentRole:
-            if column in {0, 3, 4, 5, 6, 7}:
+            if column in {0, 3, 4, 5, 6, 7, 8}:
                 return int(Qt.AlignCenter)
             return int(Qt.AlignLeft | Qt.AlignVCenter)
 
-        if role == Qt.ForegroundRole and column == 5:
+        if role == Qt.ForegroundRole and column == 6:
             if int(debt.remaining_balance or 0) > 0:
                 return QColor('#b91c1c')
             return QColor('#15803d')
 
-        if role == Qt.BackgroundRole and column == 7:
+        if role == Qt.BackgroundRole and column == 8:
             status = (debt.status or '').upper()
             if status == 'PAID':
                 return QColor('#dcfce7')
@@ -322,11 +339,13 @@ class DebtsTableModel(QAbstractTableModel):
             str(debt.id or ''),
             debt.debtor_name or '-',
             debt.phone or '-',
+            debt.purchase_date or '-',
             f'{int(debt.total_amount or 0):,}',
             f'{int(debt.paid_amount or 0):,}',
             f'{int(debt.remaining_balance or 0):,}',
             debt.due_date or '-',
             DebtService.STATUS_LABELS.get((debt.status or '').upper(), debt.status or '-'),
+            debt.description or '-',
         ]
         return values[column]
 
@@ -367,11 +386,13 @@ class DebtsFilterProxyModel(QSortFilterProxyModel):
                 str(debt.id or ''),
                 debt.debtor_name or '',
                 debt.phone or '',
+                debt.purchase_date or '',
                 str(debt.total_amount or ''),
                 str(debt.paid_amount or ''),
                 str(debt.remaining_balance or ''),
                 debt.due_date or '',
                 debt.status or '',
+                debt.description or '',
                 DebtService.STATUS_LABELS.get((debt.status or '').upper(), ''),
             ]
         ).lower()
@@ -390,12 +411,14 @@ class DebtsFilterProxyModel(QSortFilterProxyModel):
         if left.column() == 0:
             return int(left_debt.id or 0) < int(right_debt.id or 0)
         if left.column() == 3:
-            return int(left_debt.total_amount or 0) < int(right_debt.total_amount or 0)
+            return (left_debt.purchase_date or '') < (right_debt.purchase_date or '')
         if left.column() == 4:
-            return int(left_debt.paid_amount or 0) < int(right_debt.paid_amount or 0)
+            return int(left_debt.total_amount or 0) < int(right_debt.total_amount or 0)
         if left.column() == 5:
-            return int(left_debt.remaining_balance or 0) < int(right_debt.remaining_balance or 0)
+            return int(left_debt.paid_amount or 0) < int(right_debt.paid_amount or 0)
         if left.column() == 6:
+            return int(left_debt.remaining_balance or 0) < int(right_debt.remaining_balance or 0)
+        if left.column() == 7:
             return (left_debt.due_date or '') < (right_debt.due_date or '')
         return super().lessThan(left, right)
 
@@ -403,9 +426,10 @@ class DebtsFilterProxyModel(QSortFilterProxyModel):
 class DebtPage(QWidget):
     debtsChanged = Signal()
 
-    def __init__(self, debt_service: DebtService, parent: QWidget | None = None):
+    def __init__(self, debt_service: DebtService, export_service=None, parent: QWidget | None = None):
         super().__init__(parent)
         self.debt_service = debt_service
+        self.export_service = export_service
         self.model = DebtsTableModel(self)
         self.proxy_model = DebtsFilterProxyModel(self)
         self.proxy_model.setSourceModel(self.model)
@@ -483,10 +507,12 @@ class DebtPage(QWidget):
         self.btn_add = QPushButton('ثبت بدهی')
         self.btn_edit = QPushButton('ویرایش')
         self.btn_delete = QPushButton('حذف')
+        self.btn_export = QPushButton('خروجی اکسل')
 
         controls_layout.addWidget(self.btn_add)
         controls_layout.addWidget(self.btn_edit)
         controls_layout.addWidget(self.btn_delete)
+        controls_layout.addWidget(self.btn_export)
         page_layout.addLayout(controls_layout)
 
         self.table_view = QTableView(self)
@@ -517,11 +543,12 @@ class DebtPage(QWidget):
         self.btn_add.clicked.connect(self._add_debt)
         self.btn_edit.clicked.connect(self._edit_debt)
         self.btn_delete.clicked.connect(self._delete_debt)
+        self.btn_export.clicked.connect(self._export_debts)
 
         self.table_view.customContextMenuRequested.connect(self._open_context_menu)
         self.table_view.doubleClicked.connect(lambda *_: self._edit_debt())
 
-        self.proxy_model.sort(6, Qt.AscendingOrder)
+        self.proxy_model.sort(7, Qt.AscendingOrder)
 
     def _create_summary_card(self, parent_layout, title_text: str, value_text: str, helper_text: str):
         card = QFrame()
@@ -550,7 +577,7 @@ class DebtPage(QWidget):
         self.table_view.setUpdatesEnabled(False)
         try:
             self.model.set_debts(self.debt_service.list_debts())
-            self.table_view.sortByColumn(6, Qt.AscendingOrder)
+            self.table_view.sortByColumn(7, Qt.AscendingOrder)
         finally:
             self.table_view.setUpdatesEnabled(True)
         self._refresh_metrics()
@@ -648,6 +675,31 @@ class DebtPage(QWidget):
         self.refresh()
         self.debtsChanged.emit()
 
+    def _export_debts(self):
+        if self.export_service is None:
+            QMessageBox.warning(self, 'خروجی اکسل', 'سرویس خروجی اکسل برای بدهی ها پیکربندی نشده است.')
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            'محل ذخیره گزارش بدهی ها',
+            '',
+            'Excel Files (*.xlsx)',
+        )
+        if not file_path:
+            return
+
+        try:
+            result = self.export_service.export_debts_to_excel(
+                file_path=file_path,
+                debts=self._filtered_debts(),
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, 'خروجی اکسل', str(exc))
+            return
+
+        QMessageBox.information(self, 'خروجی اکسل', f'گزارش بدهی ها با موفقیت ذخیره شد\n{result}')
+
     def _open_context_menu(self, pos):
         index = self.table_view.indexAt(pos)
         if index.isValid():
@@ -670,3 +722,6 @@ class DebtPage(QWidget):
 
     def trigger_delete_debt(self):
         self._delete_debt()
+
+    def trigger_export_debts(self):
+        self._export_debts()
