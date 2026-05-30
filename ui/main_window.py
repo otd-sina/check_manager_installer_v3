@@ -212,6 +212,7 @@ class MainWindow(QMainWindow):
                 'add': self.debts_page.trigger_add_debt,
                 'edit': self.debts_page.trigger_edit_debt,
                 'delete': self.debts_page.trigger_delete_debt,
+                'export': self.debts_page.trigger_export_debts,
             },
         }
 
