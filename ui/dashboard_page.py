@@ -222,6 +222,7 @@ class DashboardPage(QWidget):
         for idx, (key, module_title, default_value, helper) in enumerate(modules):
             card = QFrame()
             card.setObjectName('moduleSummaryCard')
+            card.setMinimumHeight(150)
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 12, 14, 12)
             card_layout.setSpacing(6)
@@ -574,13 +575,16 @@ class DashboardPage(QWidget):
     def _create_summary_card(self, parent_layout, row, col, title_text, value_text, helper_text):
         card = QFrame()
         card.setObjectName('summaryCard')
+        card.setMinimumHeight(150)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(8)
 
         title = QLabel(title_text)
         title.setObjectName('summaryCardTitle')
         value = QLabel(value_text)
         value.setObjectName('summaryCardValue')
+        value.setMinimumHeight(40)
         helper = QLabel(helper_text)
         helper.setObjectName('summaryCardHelper')
         helper.setWordWrap(True)

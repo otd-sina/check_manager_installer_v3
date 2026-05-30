@@ -102,8 +102,8 @@ class DebtService:
         if not debtor_name:
             raise ValueError('نام بدهکار الزامی است.')
 
-        phone = self._normalize_phone(debt.phone)
-        if len(phone) != 11:
+        phone = str(debt.phone or '').strip()
+        if len(phone) != 11 or not phone.isdigit():
             raise ValueError('تلفن همراه باید دقیقا 11 رقم باشد.')
 
         total_amount = self._normalize_amount(debt.total_amount)

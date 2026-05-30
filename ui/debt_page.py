@@ -206,7 +206,7 @@ class AddDebtDialog(QDialog):
             errors.append('نام بدهکار الزامی است.')
             set_invalid(self.edt_debtor_name, True)
 
-        if len(phone) != 11:
+        if len(phone) != 11 or not phone.isdigit():
             errors.append('تلفن همراه باید دقیقا 11 رقم باشد.')
             set_invalid(self.edt_phone, True)
 
