@@ -70,6 +70,9 @@ class DebtService:
     def get_unpaid_debts_count(self) -> int:
         return int(self.db.get_unpaid_debts_count())
 
+    def get_overdue_debts_balance(self) -> int:
+        return int(self.db.get_overdue_debts_balance(today_jalali().strftime('%Y/%m/%d')))
+
     def _row_to_model(self, row) -> Debt:
         total_amount = self._normalize_amount(row['total_amount'])
         paid_amount = self._normalize_amount(row['paid_amount'])
@@ -77,7 +80,7 @@ class DebtService:
             paid_amount = total_amount
         remaining_balance = total_amount - paid_amount
 
-        purchase_date = self._safe_normalize_date(row['purchase_date'])
+        purchase_date = self._safe_normalize_date(self._row_value(row, 'purchase_date', ''))
         if not purchase_date:
             purchase_date = today_jalali().strftime('%Y/%m/%d')
 
@@ -91,7 +94,7 @@ class DebtService:
             paid_amount=paid_amount,
             remaining_balance=remaining_balance,
             status=self._derive_status(remaining_balance, total_amount),
-            description=(row['description'] or '').strip(),
+            description=str(self._row_value(row, 'description', '') or '').strip(),
         )
 
     def _validate_and_normalize(self, debt: Debt) -> Debt:
@@ -99,8 +102,8 @@ class DebtService:
         if not debtor_name:
             raise ValueError('نام بدهکار الزامی است.')
 
-        phone = self._normalize_phone(debt.phone)
-        if len(phone) != 11:
+        phone = str(debt.phone or '').strip()
+        if len(phone) != 11 or not phone.isdigit():
             raise ValueError('تلفن همراه باید دقیقا 11 رقم باشد.')
 
         total_amount = self._normalize_amount(debt.total_amount)
@@ -149,6 +152,18 @@ class DebtService:
             'status': debt.status,
             'description': debt.description,
         }
+
+    @staticmethod
+    def _row_value(row, column: str, default=None):
+        if hasattr(row, 'get'):
+            return row.get(column, default)
+
+        try:
+            if hasattr(row, 'keys') and column not in row.keys():
+                return default
+            return row[column]
+        except (IndexError, KeyError, TypeError):
+            return default
 
     @staticmethod
     def _normalize_amount(value: int | str | None) -> int:

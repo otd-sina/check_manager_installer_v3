@@ -94,6 +94,7 @@ class DashboardPage(QWidget):
         self.module_values: dict[str, QLabel] = {}
         self.module_growth_values: dict[str, QLabel] = {}
         self.cashflow_values: dict[str, QLabel] = {}
+        self.debt_overview_values: dict[str, QLabel] = {}
 
         self._all_checks = []
         self._all_expenses = []
@@ -123,6 +124,7 @@ class DashboardPage(QWidget):
 
         self._build_header(content_layout)
         self._build_module_summary(content_layout)
+        self._build_debt_overview(content_layout)
         self._build_analytics_metrics(content_layout)
         self._build_ai_insights_panel(content_layout)
         self._build_charts(content_layout)
@@ -220,6 +222,7 @@ class DashboardPage(QWidget):
         for idx, (key, module_title, default_value, helper) in enumerate(modules):
             card = QFrame()
             card.setObjectName('moduleSummaryCard')
+            card.setMinimumHeight(150)
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 12, 14, 12)
             card_layout.setSpacing(6)
@@ -242,6 +245,41 @@ class DashboardPage(QWidget):
             self.module_values[key] = value
             self.module_growth_values[key] = growth
             grid.addWidget(card, idx // 2, idx % 2)
+
+        for col in range(2):
+            grid.setColumnStretch(col, 1)
+
+        layout.addLayout(grid)
+        root_layout.addWidget(panel)
+
+    def _build_debt_overview(self, root_layout):
+        panel = QFrame(self)
+        panel.setObjectName('dashboardPanel')
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
+
+        title = QLabel('نمای کلی بدهی ها')
+        title.setObjectName('dashboardSectionTitle')
+        layout.addWidget(title)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+
+        cards = [
+            ('total_receivables', 'کل مطالبات', '0', 'جمع همه مانده بدهی های باز'),
+            ('overdue_debts', 'بدهی های سررسید گذشته', '0', 'جمع مانده بدهی هایی که سررسید آن ها قبل از امروز است'),
+        ]
+        for idx, (key, title_text, value_text, helper_text) in enumerate(cards):
+            self.debt_overview_values[key] = self._create_summary_card(
+                grid,
+                0,
+                idx,
+                title_text,
+                value_text,
+                helper_text,
+            )
 
         for col in range(2):
             grid.setColumnStretch(col, 1)
@@ -537,13 +575,16 @@ class DashboardPage(QWidget):
     def _create_summary_card(self, parent_layout, row, col, title_text, value_text, helper_text):
         card = QFrame()
         card.setObjectName('summaryCard')
+        card.setMinimumHeight(150)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(8)
 
         title = QLabel(title_text)
         title.setObjectName('summaryCardTitle')
         value = QLabel(value_text)
         value.setObjectName('summaryCardValue')
+        value.setMinimumHeight(40)
         helper = QLabel(helper_text)
         helper.setObjectName('summaryCardHelper')
         helper.setWordWrap(True)
@@ -648,6 +689,7 @@ class DashboardPage(QWidget):
             previous_registrations,
             previous_debts,
         )
+        self._update_debt_overview()
         self._update_analytics_metrics(checks, expenses, registrations)
         monthly_rows = self._update_monthly_analytics_view(year, month)
         self._update_cashflow_snapshot(expenses, registrations)
@@ -720,6 +762,27 @@ class DashboardPage(QWidget):
             self.module_values[key].setText(f'{value:,}')
             growth = self._growth_text(value, previous_values[key])
             self._apply_growth_style(self.module_growth_values[key], growth)
+
+    def _update_debt_overview(self):
+        today_text = today_jalali().strftime('%Y/%m/%d')
+        total_receivables = sum(
+            int(item.remaining_balance or 0)
+            for item in self._all_debts
+            if int(item.remaining_balance or 0) > 0
+        )
+        overdue_debts = sum(
+            int(item.remaining_balance or 0)
+            for item in self._all_debts
+            if int(item.remaining_balance or 0) > 0
+            and bool(item.due_date)
+            and item.due_date < today_text
+        )
+
+        self.debt_overview_values['total_receivables'].setText(f'{total_receivables:,}')
+        self.debt_overview_values['overdue_debts'].setText(f'{overdue_debts:,}')
+        self.debt_overview_values['overdue_debts'].setStyleSheet(
+            'color: #b91c1c;' if overdue_debts > 0 else 'color: #15803d;'
+        )
 
     def _update_analytics_metrics(self, checks, expenses, registrations):
         total_income = sum(int(item.income_total or 0) for item in registrations)
