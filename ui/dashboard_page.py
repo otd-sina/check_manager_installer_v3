@@ -244,7 +244,44 @@ class DashboardPage(QWidget):
 
             self.module_values[key] = value
             self.module_growth_values[key] = growth
-            grid.addWidget(card, idx // 2, idx % 2)
+            row = idx // 2
+            column = 1 if key == 'receivables' else idx % 2
+            grid.addWidget(card, row, column)
+
+        for col in range(2):
+            grid.setColumnStretch(col, 1)
+
+        layout.addLayout(grid)
+        root_layout.addWidget(panel)
+
+    def _build_debt_overview(self, root_layout):
+        panel = QFrame(self)
+        panel.setObjectName('dashboardPanel')
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
+
+        title = QLabel('نمای کلی بدهی ها')
+        title.setObjectName('dashboardSectionTitle')
+        layout.addWidget(title)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+
+        cards = [
+            ('total_receivables', 'کل مطالبات', '0', 'جمع همه مانده بدهی های باز'),
+            ('overdue_debts', 'بدهی های سررسید گذشته', '0', 'جمع مانده بدهی هایی که سررسید آن ها قبل از امروز است'),
+        ]
+        for idx, (key, title_text, value_text, helper_text) in enumerate(cards):
+            self.debt_overview_values[key] = self._create_summary_card(
+                grid,
+                0,
+                idx,
+                title_text,
+                value_text,
+                helper_text,
+            )
 
         for col in range(2):
             grid.setColumnStretch(col, 1)
