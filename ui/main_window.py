@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
 )
 
 from core.error_handler import report_exception
-from services.debt_service import DebtService
 from ui.add_check_dialog import AddCheckDialog
 from ui.backup_import_page import BackupImportPage
 from ui.check_alerts import CheckAlertManager
@@ -46,7 +45,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.context = context
         self.check_service = context.check_service
-        self.debt_service = DebtService(self.check_service.db)
+        self.debt_service = context.debt_service
         self.expense_service = context.expense_service
         self.export_service = context.export_service
         self.ai_service = context.ai_service
@@ -148,7 +147,7 @@ class MainWindow(QMainWindow):
             self.export_service,
         )
         self.expenses_page = ExpensesPage(self.expense_service, self.export_service)
-        self.debts_page = DebtPage(self.debt_service)
+        self.debts_page = DebtPage(self.debt_service, self.export_service)
         self.backup_page = BackupImportPage(
             self.backup_service,
             before_backup_callback=self.context.prepare_for_backup,
@@ -213,6 +212,7 @@ class MainWindow(QMainWindow):
                 'add': self.debts_page.trigger_add_debt,
                 'edit': self.debts_page.trigger_edit_debt,
                 'delete': self.debts_page.trigger_delete_debt,
+                'export': self.debts_page.trigger_export_debts,
             },
         }
 
