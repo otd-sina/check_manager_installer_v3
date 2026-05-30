@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from config import EXPORT_DIR
+from models.debt import Debt
 from services.check_service import CheckService
+from services.debt_service import DebtService
 from services.expense_service import ExpenseService
 from services.registration_service import RegistrationService
 from utils.date_utils import today_jalali
@@ -22,10 +23,12 @@ class ExportService:
         check_service: CheckService,
         expense_service: Optional[ExpenseService] = None,
         registration_service: Optional[RegistrationService] = None,
+        debt_service: Optional[DebtService] = None,
     ):
         self.check_service = check_service
         self.expense_service = expense_service
         self.registration_service = registration_service
+        self.debt_service = debt_service
 
     def export_checks_to_excel(
         self,
@@ -93,6 +96,65 @@ class ExportService:
         destination = self._resolve_file_path(file_path, prefix='checks_export')
         wb.save(destination)
         logger.info('Checks exported to Excel: rows=%s path=%s', row_count, destination)
+        return destination
+
+    def export_debts_to_excel(
+        self,
+        file_path: Optional[Path] = None,
+        debts: Optional[Sequence[Debt]] = None,
+    ) -> Path:
+        if debts is None:
+            if self.debt_service is None:
+                raise ValueError('Debt service is not configured.')
+            debts = self.debt_service.list_debts()
+
+        excel = self._require_excel_support()
+        styles = self._build_styles(excel)
+        wb = excel['Workbook']()
+        ws = wb.active
+        ws.title = 'بدهی ها'
+
+        headers = [
+            'Name',
+            'Phone',
+            'Purchase Date',
+            'Due Date',
+            'Total Amount',
+            'Paid',
+            'Remaining Balance',
+            'Status',
+            'Description',
+        ]
+        widths = self._append_header(ws, headers, styles)
+        row_count = 0
+
+        for debt in debts:
+            values = [
+                debt.debtor_name,
+                debt.phone,
+                debt.purchase_date,
+                debt.due_date,
+                int(debt.total_amount or 0),
+                int(debt.paid_amount or 0),
+                int(debt.remaining_balance or 0),
+                DebtService.STATUS_LABELS.get((debt.status or '').upper(), debt.status),
+                debt.description,
+            ]
+            self._append_data_row(ws, values, widths, styles)
+            row_count += 1
+
+        self._finalize_sheet(
+            ws,
+            widths,
+            styles,
+            excel,
+            center_columns={2, 3, 4, 8},
+            amount_columns={5, 6, 7},
+        )
+
+        destination = self._resolve_file_path(file_path, prefix='debts_export')
+        wb.save(destination)
+        logger.info('Debts exported to Excel: rows=%s path=%s', row_count, destination)
         return destination
 
     def export_expenses_to_excel(

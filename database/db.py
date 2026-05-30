@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Mapping, Sequence
 
-from utils.date_utils import normalize_jalali_date_text
+from utils.date_utils import normalize_jalali_date_text, today_jalali
 
 import logging
 
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS debts (
     debtor_name TEXT NOT NULL CHECK(trim(debtor_name) <> ''),
     phone TEXT NOT NULL DEFAULT '' CHECK(phone = '' OR (phone NOT GLOB '*[^0-9]*' AND length(phone) >= 10)),
     purchase_date TEXT NOT NULL DEFAULT '' CHECK({DATE_CHECK_TEMPLATE.format(column='purchase_date')}),
-    description TEXT NOT NULL DEFAULT '',
+    description TEXT DEFAULT NULL,
     total_amount INTEGER NOT NULL DEFAULT 0 CHECK(total_amount >= 0),
     paid_amount INTEGER NOT NULL DEFAULT 0 CHECK(paid_amount >= 0),
     remaining_balance INTEGER NOT NULL DEFAULT 0 CHECK(remaining_balance >= 0),
@@ -343,8 +343,32 @@ class Database:
 
     def _ensure_debts_table(self, cur: sqlite3.Cursor):
         cur.execute(DEBTS_TABLE_SQL)
+        self._ensure_debts_columns(cur)
         for statement in DEBT_INDEXES_SQL:
             cur.execute(statement)
+
+    def _ensure_debts_columns(self, cur: sqlite3.Cursor):
+        cur.execute('PRAGMA table_info(debts)')
+        columns = {row['name'] for row in cur.fetchall()}
+
+        if 'purchase_date' not in columns:
+            cur.execute(
+                "ALTER TABLE debts ADD COLUMN purchase_date TEXT NOT NULL DEFAULT '' "
+                f"CHECK({DATE_CHECK_TEMPLATE.format(column='purchase_date')})"
+            )
+
+        today_text = today_jalali().strftime('%Y/%m/%d')
+        cur.execute(
+            """
+            UPDATE debts
+            SET purchase_date = ?
+            WHERE trim(COALESCE(purchase_date, '')) = ''
+            """,
+            (today_text,),
+        )
+
+        if 'description' not in columns:
+            cur.execute("ALTER TABLE debts ADD COLUMN description TEXT DEFAULT NULL")
 
     def _ensure_expense_tables(self, cur: sqlite3.Cursor):
         cur.execute(EXPENSE_CATEGORIES_TABLE_SQL)
@@ -961,14 +985,16 @@ class Database:
     def create_debt(self, payload: Mapping[str, object]) -> int:
         query = """
             INSERT INTO debts (
-                debtor_name, phone, total_amount, paid_amount, remaining_balance,
-                due_date, status, created_at, updated_at
+                debtor_name, phone, purchase_date, description, total_amount,
+                paid_amount, remaining_balance, due_date, status, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
         params = (
             payload['debtor_name'],
             payload.get('phone', ''),
+            payload.get('purchase_date', ''),
+            payload.get('description', ''),
             payload['total_amount'],
             payload.get('paid_amount', 0),
             payload['remaining_balance'],
@@ -980,13 +1006,16 @@ class Database:
     def update_debt(self, debt_id: int, payload: Mapping[str, object]):
         query = """
             UPDATE debts
-            SET debtor_name = ?, phone = ?, total_amount = ?, paid_amount = ?,
-                remaining_balance = ?, due_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+            SET debtor_name = ?, phone = ?, purchase_date = ?, description = ?,
+                total_amount = ?, paid_amount = ?, remaining_balance = ?, due_date = ?,
+                status = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """
         params = (
             payload['debtor_name'],
             payload.get('phone', ''),
+            payload.get('purchase_date', ''),
+            payload.get('description', ''),
             payload['total_amount'],
             payload.get('paid_amount', 0),
             payload['remaining_balance'],
@@ -1034,6 +1063,27 @@ class Database:
         row = self.fetchone(
             """
             SELECT COALESCE(SUM(remaining_balance), 0) AS total
+            FROM debts
+            WHERE remaining_balance > 0
+            """,
+        )
+        return int((row['total'] if row else 0) or 0)
+
+    def get_overdue_debts_balance(self, today: str) -> int:
+        row = self.fetchone(
+            """
+            SELECT COALESCE(SUM(remaining_balance), 0) AS total
+            FROM debts
+            WHERE remaining_balance > 0 AND due_date <> '' AND due_date < ?
+            """,
+            (today,),
+        )
+        return int((row['total'] if row else 0) or 0)
+
+    def get_unpaid_debts_count(self) -> int:
+        row = self.fetchone(
+            """
+            SELECT COUNT(*) AS total
             FROM debts
             WHERE remaining_balance > 0
             """,
